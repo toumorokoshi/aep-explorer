@@ -12,7 +12,7 @@ function capitalize(str: string): string {
 }
 
 export function createRouteObjects(resources: ResourceSchema[]): object {
-  const base: Record<string, string> = {
+  const base = {
     "/": "Home",
   };
   if (resources === null) {
@@ -41,6 +41,7 @@ export function createValidationSchema(
 
   for (const property of properties) {
     if (!property) continue; // Skip null properties
+    if (property.schema?.readOnly) continue; // Skip readOnly properties
     let fieldSchema: z.ZodTypeAny;
     const isRequired = requiredFields.includes(property.name);
 
@@ -89,8 +90,16 @@ export function createValidationSchema(
   return z.object(schemaObject);
 }
 
+export type RawSchema = {
+  properties?: Record<string, RawSchema>;
+  required?: string[];
+  type?: string;
+  readOnly?: boolean;
+  [key: string]: unknown;
+};
+
 export function createValidationSchemaFromRawSchema(
-  schema: Record<string, unknown>,
+  schema: RawSchema | null | undefined,
 ): z.ZodTypeAny {
   // This version works directly with raw schema objects (e.g., from CustomMethod.request)
   if (!schema) {
@@ -98,13 +107,11 @@ export function createValidationSchemaFromRawSchema(
   }
 
   const properties = schema.properties || {};
-  const required = (schema.required as string[]) || [];
+  const required = schema.required || [];
   const schemaObject: Record<string, z.ZodTypeAny> = {};
 
-  for (const [name, propSchema] of Object.entries(properties) as [
-    string,
-    Record<string, unknown>,
-  ][]) {
+  for (const [name, propSchema] of Object.entries(properties)) {
+    if (propSchema.readOnly) continue;
     const isFieldRequired = required.includes(name);
     let fieldSchema: z.ZodTypeAny;
 

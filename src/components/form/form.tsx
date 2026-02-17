@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ButtonGroup } from "@/components/ui/button-group";
-import React, { useMemo, useEffect, useState, useCallback } from "react";
-import { useForm } from "react-hook-form";
+import React, { useMemo, useEffect, useState } from "react";
+import { useForm, Control } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { useAppSelector } from "@/hooks/store";
@@ -36,6 +36,80 @@ type FormProps = {
 };
 
 // Form is responsible for rendering a form based on the resource schema.
+const getInputType = (propertyType: string) => {
+  switch (propertyType) {
+    case "integer":
+    case "number":
+      return "number";
+    case "boolean":
+      return "checkbox";
+    default:
+      return "text";
+  }
+};
+
+const renderField = (
+  p: PropertySchema,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  control: Control<any>,
+  parentPath: string = "",
+): React.ReactNode => {
+  if (!p) {
+    return <Spinner key="loading" />;
+  }
+
+  if (p.schema?.readOnly) {
+    return null;
+  }
+
+  const fieldPath = parentPath ? `${parentPath}.${p.name}` : p.name;
+
+  if (p.type === "object") {
+    const nestedProperties = p.properties();
+    return (
+      <FieldSet key={fieldPath}>
+        <FieldLegend>{p.name}</FieldLegend>
+        <FieldGroup>
+          {nestedProperties.map((nestedProp) =>
+            renderField(nestedProp, control, fieldPath),
+          )}
+        </FieldGroup>
+      </FieldSet>
+    );
+  }
+
+  return (
+    <FormField
+      key={fieldPath}
+      control={control}
+      name={fieldPath}
+      render={({ field, fieldState }) => {
+        const inputId = `input-${fieldPath}`;
+        return (
+          <Field data-invalid={!!fieldState.error}>
+            <FieldLabel htmlFor={inputId}>{p.name}</FieldLabel>
+            <Input
+              {...field}
+              id={inputId}
+              type={getInputType(p.type)}
+              checked={p.type === "boolean" ? field.value : undefined}
+              onChange={
+                p.type === "boolean"
+                  ? (e) => field.onChange(e.target.checked)
+                  : field.onChange
+              }
+              aria-invalid={!!fieldState.error}
+            />
+            {fieldState.error && (
+              <FieldError>{fieldState.error.message}</FieldError>
+            )}
+          </Field>
+        );
+      }}
+    />
+  );
+};
+
 export function Form(props: FormProps) {
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonData, setJsonData] = useState<Record<string, unknown>>({});
@@ -51,7 +125,7 @@ export function Form(props: FormProps) {
     return props.resourceInstance?.properties || {};
   }, [props.resourceInstance]);
 
-  const form = useForm<Record<string, unknown>>({
+  const form = useForm({
     resolver: zodResolver(validationSchema),
     defaultValues: defaultValues,
   });
@@ -124,85 +198,9 @@ export function Form(props: FormProps) {
     }
   };
 
-  const getInputType = (propertyType: string): React.HTMLInputTypeAttribute => {
-    switch (propertyType) {
-      case "integer":
-      case "number":
-        return "number";
-      case "boolean":
-        return "checkbox";
-      default:
-        return "text";
-    }
-  };
-
-  const renderField = useCallback(
-    (p: PropertySchema, parentPath: string = ""): React.ReactNode => {
-      if (!p) {
-        return <Spinner key="loading" />;
-      }
-
-      const fieldPath = parentPath ? `${parentPath}.${p.name}` : p.name;
-
-      if (p.type === "object") {
-        const nestedProperties = p.properties();
-        return (
-          <FieldSet key={fieldPath}>
-            <FieldLegend>{p.name}</FieldLegend>
-            <FieldGroup>
-              {nestedProperties.map((nestedProp) =>
-                renderField(nestedProp, fieldPath),
-              )}
-            </FieldGroup>
-          </FieldSet>
-        );
-      }
-
-      return (
-        <FormField
-          key={fieldPath}
-          control={form.control}
-          name={fieldPath}
-          render={({ field, fieldState }) => {
-            const inputId = `input-${fieldPath}`;
-            const { value, onChange, ...fieldProps } = field;
-            return (
-              <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor={inputId}>{p.name}</FieldLabel>
-                <Input
-                  {...fieldProps}
-                  id={inputId}
-                  type={getInputType(p.type) as React.HTMLInputTypeAttribute}
-                  value={
-                    p.type === "boolean"
-                      ? undefined
-                      : (value as string | number | undefined)
-                  }
-                  checked={
-                    p.type === "boolean" ? (value as boolean) : undefined
-                  }
-                  onChange={
-                    p.type === "boolean"
-                      ? (e) => onChange(e.target.checked)
-                      : onChange
-                  }
-                  aria-invalid={!!fieldState.error}
-                />
-                {fieldState.error && (
-                  <FieldError>{fieldState.error.message}</FieldError>
-                )}
-              </Field>
-            );
-          }}
-        />
-      );
-    },
-    [form.control],
-  );
-
   const formBuilder = useMemo(() => {
-    return props.resource.properties().map((p) => renderField(p));
-  }, [props.resource, renderField]);
+    return props.resource.properties().map((p) => renderField(p, form.control));
+  }, [props.resource, form.control]);
 
   useEffect(() => {
     // Set parent parameters on the resource
@@ -235,12 +233,7 @@ export function Form(props: FormProps) {
           </form>
         ) : (
           <div className="space-y-2">
-            <JsonEditor
-              data={jsonData}
-              setData={(d: unknown) =>
-                setJsonData(d as Record<string, unknown>)
-              }
-            />
+            <JsonEditor data={jsonData} setData={setJsonData} />
             {jsonError && (
               <div
                 className="text-sm text-red-600 dark:text-red-400"

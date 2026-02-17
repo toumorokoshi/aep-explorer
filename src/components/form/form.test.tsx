@@ -77,6 +77,19 @@ describe("Form", () => {
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
   });
 
+  it("hides readOnly properties from the form", () => {
+    const properties = [
+      new PropertySchema("name", "string", { type: "string" }),
+      new PropertySchema("path", "string", { type: "string", readOnly: true }),
+    ];
+
+    const resource = createMockResourceSchema(properties);
+    renderForm(resource);
+
+    expect(screen.queryByLabelText("name")).toBeInTheDocument();
+    expect(screen.queryByLabelText("path")).not.toBeInTheDocument();
+  });
+
   it("sets correct input types for different property types", () => {
     const properties = [
       new PropertySchema("name", "string"),
@@ -204,7 +217,7 @@ describe("Form", () => {
   });
 
   it("handles loading state when properties are null", () => {
-    const properties = [null as any]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const properties = [null as unknown as PropertySchema];
     const resource = createMockResourceSchema(properties);
     renderForm(resource);
 
